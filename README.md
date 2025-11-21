@@ -1,53 +1,65 @@
 # Cliente FTP Concurrente
 
-**Autor:** ReyesL  
-**Archivo fuente:** `ReyesL-clienteFTP.c`
+**Autor**: ReyesL  
+**Archivo principal**: `ReyesL-clienteFTP.c`
 
 ## Descripción
 
-Este proyecto implementa un cliente FTP concurrente basado en el estándar RFC 959. El programa permite realizar transferencias de archivos (subidas y bajadas) y listar directorios en segundo plano (background), permitiendo al usuario seguir interactuando con la consola de comandos mientras la transferencia ocurre.
+Este proyecto implementa un cliente FTP concurrente basado en el estándar RFC 959. El programa utiliza procesos (fork) para gestionar las transferencias de datos en segundo plano, permitiendo mantener activo el canal de control para nuevos comandos.
 
-## Archivos del Proyecto
+## Estructura del Proyecto
 
-- `ReyesL-clienteFTP.c`: Código fuente completo (versión monolítica)
-- `Makefile`: Archivo de automatización de compilación
-- `README.md`: Documentación del proyecto
+El ejecutable se construye enlazando el código principal con las librerías de conexión proporcionadas en clase:
 
-## Requisitos
+- **`ReyesL-clienteFTP.c`**: Lógica principal del cliente (Manejo de comandos, concurrencia y UI).
 
-- Compilador GCC
-- Entorno Linux o Unix-like (macOS, WSL)
+### Librerías de soporte (Requeridas para compilar):
+
+- `connectTCP.c` / `connectsock.c`: Gestión de conexiones salientes.
+- `passiveTCP.c` / `passivesock.c`: Gestión de sockets pasivos (si fueran necesarios).
+- `errexit.c`: Gestión de errores.
 
 ## Instrucciones de Compilación
 
-Para compilar el proyecto, abra una terminal en la carpeta y ejecute:
-```
+1. Asegúrese de que todos los archivos `.c` mencionados arriba estén en la misma carpeta.
+
+2. Ejecute el siguiente comando para compilar todo el conjunto:
+
+```bash
 make
 ```
 
-Para limpiar los archivos generados:
-```
-make clean
-```
-
+Esto generará el binario `ReyesL-clienteFTP`.
 
 ## Instrucciones de Ejecución
-Sintaxis:
-./ReyesL-clienteFTP <IP_SERVIDOR> [PUERTO]
 
+```bash
+./ReyesL-clienteFTP <HOST> [PUERTO]
+```
 
-Ejemplos:
-- `Servidor local (puerto 21)`: ./ReyesL-clienteFTP localhost
-- `Servidor externo`: ./ReyesL-clienteFTP 192.168.1.50
+### Ejemplo:
 
+```bash
+./ReyesL-clienteFTP localhost
+```
 
-## Comandos FTP Soportados
-- `user <usuario>`: Enviar usuario.
-- `pass <clave>`: Enviar contraseña.
-- `dir`: Listar archivos (Concurrente).
-- `get <archivo>`: Descargar archivo (Concurrente).
-- `put <archivo>`: Subir archivo (Concurrente).
-- `cd <dir>`: Cambiar directorio.
-- `mkd <dir>`: Crear directorio.
-- `pwd`: Ver directorio actual.
-- `quit`: Salir.
+## Funcionalidades
+
+- **Concurrencia**: Soporte para transferencias simultáneas (GET/PUT/LIST) sin bloquear el prompt.
+- **Comandos implementados**: 
+  - `USER` - Autenticación de usuario
+  - `PASS` - Contraseña del usuario
+  - `LIST` - Listar archivos del directorio actual
+  - `RETR` - Descargar archivo (GET)
+  - `STOR` - Subir archivo (PUT)
+  - `CWD` - Cambiar directorio de trabajo
+  - `MKD` - Crear directorio
+  - `PWD` - Mostrar directorio actual
+  - `QUIT` - Salir del cliente FTP
+
+## Características Técnicas
+
+- Implementación basada en el estándar RFC 959 para FTP
+- Arquitectura concurrente utilizando procesos (fork)
+- Gestión separada de canal de control y canal de datos
+- Interfaz de usuario interactiva que permanece responsive durante transferencias

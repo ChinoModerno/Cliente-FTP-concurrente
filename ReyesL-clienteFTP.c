@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <errno.h>
 #include <netdb.h>
-#include <stdarg.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -14,103 +13,11 @@
 #include <signal.h>
 #include <fcntl.h>
 
-#ifndef INADDR_NONE
-#define INADDR_NONE 0xffffffff
-#endif
+extern int  errno;
 
-extern int errno;
-unsigned short portbase = 0;
-
-
-int errexit(const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    vfprintf(stderr, format, args);
-    va_end(args);
-    exit(1);
-}
-
-int connectsock(const char *host, const char *service, const char *transport) {
-    struct hostent  *phe;
-    struct servent  *pse;
-    struct protoent *ppe;
-    struct sockaddr_in sin;
-    int s, type;
-
-    memset(&sin, 0, sizeof(sin));
-    sin.sin_family = AF_INET;
-
-    if ( (pse = getservbyname(service, transport)) )
-        sin.sin_port = pse->s_port;
-    else if ( (sin.sin_port = htons((unsigned short)atoi(service))) == 0 )
-        errexit("can't get \"%s\" service entry\n", service);
-
-    if ( (phe = gethostbyname(host)) )
-        memcpy(&sin.sin_addr, phe->h_addr, phe->h_length);
-    else if ( (sin.sin_addr.s_addr = inet_addr(host)) == INADDR_NONE )
-        errexit("can't get \"%s\" host entry\n", host);
-
-    if ( (ppe = getprotobyname(transport)) == 0)
-        errexit("can't get \"%s\" protocol entry\n", transport);
-
-    if (strcmp(transport, "udp") == 0)
-        type = SOCK_DGRAM;
-    else
-        type = SOCK_STREAM;
-
-    s = socket(PF_INET, type, ppe->p_proto);
-    if (s < 0)
-        errexit("can't create socket: %s\n", strerror(errno));
-
-    if (connect(s, (struct sockaddr *)&sin, sizeof(sin)) < 0)
-        errexit("can't connect to %s.%s: %s\n", host, service, strerror(errno));
-    
-    return s;
-}
-
-int connectTCP(const char *host, const char *service) {
-    return connectsock(host, service, "tcp");
-}
-
-int passivesock(const char *service, const char *transport, int qlen) {
-    struct servent  *pse;
-    struct protoent *ppe;
-    struct sockaddr_in sin;
-    int s, type;
-
-    memset(&sin, 0, sizeof(sin));
-    sin.sin_family = AF_INET;
-    sin.sin_addr.s_addr = INADDR_ANY;
-
-    if ( (pse = getservbyname(service, transport)) )
-        sin.sin_port = htons(ntohs((unsigned short)pse->s_port) + portbase);
-    else if ( (sin.sin_port = htons((unsigned short)atoi(service))) == 0 )
-        errexit("can't get \"%s\" service entry\n", service);
-
-    if ( (ppe = getprotobyname(transport)) == 0)
-        errexit("can't get \"%s\" protocol entry\n", transport);
-
-    if (strcmp(transport, "udp") == 0)
-        type = SOCK_DGRAM;
-    else
-        type = SOCK_STREAM;
-
-    s = socket(PF_INET, type, ppe->p_proto);
-    if (s < 0)
-        errexit("can't create socket: %s\n", strerror(errno));
-
-    if (bind(s, (struct sockaddr *)&sin, sizeof(sin)) < 0)
-        errexit("can't bind to %s port: %s\n", service, strerror(errno));
-    if (type == SOCK_STREAM && listen(s, qlen) < 0)
-        errexit("can't listen on %s port: %s\n", service, strerror(errno));
-    
-    return s;
-}
-
-int passiveTCP(const char *service, int qlen) {
-    return passivesock(service, "tcp", qlen);
-}
-
+int  errexit(const char *format, ...);
+int  connectTCP(const char *host, const char *service);
+int  passiveTCP(const char *service, int qlen);
 
 #define  LINELEN    128
 #define  BUFSIZE    4096
@@ -122,7 +29,7 @@ void sigchld_handler(int s) {
     errno = saved_errno;
 }
 
-/* Envia comandos FTP */
+/* Envia los comandos FTP al servidor */
 void sendCmd(int s, char *cmd) {
   int n;
   n = strlen(cmd);
@@ -131,18 +38,18 @@ void sendCmd(int s, char *cmd) {
   write(s, cmd, n+2);
 }
 
-/* Lee la respuesta del servidor */
+/* Lee y muestra respuesta del servidor */
 int getReply(int s, char *res) {
     int n = read(s, res, LINELEN);
     if (n > 0) {
         res[n] = '\0';
-        printf("%s", res);
+        printf("%s", res); // El servidor ya suele enviar \n
         return (res[0] - '0') * 100 + (res[1] - '0') * 10 + (res[2] - '0');
     }
     return 0;
 }
 
-/* Configura modo PASV */
+/* Configura modo PASV y retorna el socket de datos conectado */
 int pasivo(int s) {
   int sdata;
   int nport;
@@ -153,6 +60,7 @@ int pasivo(int s) {
   sprintf(cmd, "PASV");
   sendCmd(s, cmd);
   
+  // Debemos leer la respuesta de PASV bloqueando momentáneamente
   int n = read(s, res, LINELEN);
   res[n] = '\0';
   printf("%s", res);
@@ -165,13 +73,13 @@ int pasivo(int s) {
   nport = p1*256 + p2;
   snprintf(port, 8, "%d", nport);
   
+  // Llamada a connectTCP (definida externamente)
   sdata = connectTCP(host, port);
   return sdata;
 }
 
 void ayuda() {
   printf("\nCliente FTP Concurrente. Comandos:\n"
-    "  Bienvenido ....)\n"
     "  dir           - Lista directorio (concurrente)\n"
     "  get <archivo> - Descarga archivo (concurrente)\n"
     "  put <archivo> - Sube archivo (concurrente)\n"
@@ -193,6 +101,7 @@ int main(int argc, char *argv[]) {
   fd_set readfds;
   int    maxfd;
 
+  // Manejo de hijos muertos
   struct sigaction sa;
   sa.sa_handler = sigchld_handler; 
   sigemptyset(&sa.sa_mask);
@@ -206,12 +115,13 @@ int main(int argc, char *argv[]) {
     case 1: host = "localhost"; break;
     case 3: service = argv[2]; 
     case 2: host = argv[1]; break;
-    default: fprintf(stderr, "Uso: clienteftp [host [port]]\n"); exit(1);
+    default: fprintf(stderr, "Uso: ReyesL-clienteFTP [host [port]]\n"); exit(1);
   }
 
   s = connectTCP(host, service);
-  getReply(s, res);
+  getReply(s, res); 
 
+  // LOGIN
   while (1) {
     printf("User: ");
     scanf("%s", user);
@@ -224,10 +134,11 @@ int main(int argc, char *argv[]) {
     sendCmd(s, cmd);
     code = getReply(s, res);
     
-    if (code == 230) break;
+    if (code == 230) break; 
     printf("Login fallido, intente de nuevo.\n");
   }
 
+  // Limpiar buffer de stdin después del scanf/getpass
   fgets(input_buf, sizeof(input_buf), stdin); 
   ayuda();
   printf("ftp> ");
@@ -235,20 +146,22 @@ int main(int argc, char *argv[]) {
 
   while (1) {
     FD_ZERO(&readfds);
-    FD_SET(0, &readfds); 
-    FD_SET(s, &readfds); 
+    FD_SET(0, &readfds); // stdin (usuario)
+    FD_SET(s, &readfds); // socket control (servidor)
     maxfd = s;
 
+    // Esperar actividad en teclado o socket
     if (select(maxfd + 1, &readfds, NULL, NULL, NULL) == -1) {
         if (errno == EINTR) continue;
         perror("select");
         break;
     }
 
+    // 1. MENSAJES DEL SERVIDOR (Asíncronos)
     if (FD_ISSET(s, &readfds)) {
         n = read(s, res, LINELEN);
         if (n <= 0) {
-            printf("\nConexion cerrada por el servidor.\n");
+            printf("\nConexión cerrada por el servidor.\n");
             break;
         }
         res[n] = '\0';
@@ -256,6 +169,7 @@ int main(int argc, char *argv[]) {
         fflush(stdout);
     }
 
+    // 2. INPUT DEL USUARIO
     if (FD_ISSET(0, &readfds)) {
         if (fgets(input_buf, sizeof(input_buf), stdin) == NULL) break;
         input_buf[strcspn(input_buf, "\n")] = 0;
@@ -294,6 +208,7 @@ int main(int argc, char *argv[]) {
 
             sprintf(cmd, "LIST");
             sendCmd(s, cmd);
+            // Sincronización inicial necesaria
             getReply(s, res); 
 
             if (fork() == 0) { 
@@ -305,11 +220,12 @@ int main(int argc, char *argv[]) {
                 close(sdata);
                 exit(0);
             }
+            // PADRE
             close(sdata); 
-            printf("Listado de directorio en background...\n");
+            printf("Transferencia iniciada en background...\n");
 
         } else if (strcmp(ucmd, "get") == 0) {
-            if (!arg) { printf("Falta el nombre del archivo\n"); printf("ftp> "); fflush(stdout); continue; }
+            if (!arg) { printf("Falta nombre de archivo\n"); printf("ftp> "); fflush(stdout); continue; }
             
             sdata = pasivo(s);
             if (sdata < 0) continue;
@@ -318,7 +234,7 @@ int main(int argc, char *argv[]) {
             sendCmd(s, cmd);
             getReply(s, res);
 
-            if (fork() == 0) {
+            if (fork() == 0) { // HIJO
                 close(s);
                 FILE *fp = fopen(arg, "wb");
                 if (!fp) { perror("fopen"); exit(1); }
@@ -335,7 +251,7 @@ int main(int argc, char *argv[]) {
             printf("Descargando %s en background...\n", arg);
 
         } else if (strcmp(ucmd, "put") == 0) {
-            if (!arg) { printf("Falta el nombre del archivo\n"); printf("ftp> "); fflush(stdout); continue; }
+            if (!arg) { printf("Falta nombre de archivo\n"); printf("ftp> "); fflush(stdout); continue; }
             
             FILE *test = fopen(arg, "r");
             if (!test) { perror("Archivo local no encontrado"); printf("ftp> "); fflush(stdout); continue; }
