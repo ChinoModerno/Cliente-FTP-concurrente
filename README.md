@@ -7,7 +7,9 @@ Este proyecto implementa un cliente FTP concurrente basado en el estándar RFC 9
 
 Archivos del Proyecto
 ReyesL-clienteFTP.c: Código fuente completo (versión monolítica).
+
 Makefile: Archivo de automatización de compilación.
+
 README.md: Documentación del proyecto.
 
 Requisitos
@@ -30,19 +32,29 @@ Sintaxis:
 
 Ejemplos:
 Servidor local (puerto 21):
+
 ./ReyesL-clienteFTP localhost
 
 Servidor externo:
+
 ./ReyesL-clienteFTP 192.168.1.50
 
 
 Comandos FTP Soportados
 user <usuario>: Enviar usuario.
+
 pass <clave>: Enviar contraseña.
+
 dir: Listar archivos (Concurrente).
+
 get <archivo>: Descargar archivo (Concurrente).
+
 put <archivo>: Subir archivo (Concurrente).
+
 cd <dir>: Cambiar directorio.
+
 mkd <dir>: Crear directorio.
+
 pwd: Ver directorio actual.
+
 quit: Salir.
